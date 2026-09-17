@@ -128,8 +128,6 @@ async def investigate_evidence(evidence: Evidence):
     except Exception as e:
         logger.error(f"Error during investigation for case {case_id}: {str(e)}")
         # Return a safe fallback result
-        from models.investigation import Evidence, ExtractedEvidence, DevilsAdvocateResult, Verdict
-
         fallback_verdict = Verdict(
             risk_level="LOW",
             confidence=0.5,
@@ -219,31 +217,3 @@ async def investigate_evidence(evidence: Evidence):
 
         logger.info(f"Challenge completed for case {case_id}")
         return response
-        logger.error(f"Error during investigation for case {case_id}: {str(e)}")
-        # Return a safe fallback result
-        from models.investigation import Evidence, ExtractedEvidence, DevilsAdvocateResult, Verdict
-
-        fallback_verdict = Verdict(
-            risk_level="LOW",
-            confidence=0.5,
-            reasoning=["Error occurred during investigation analysis"],
-            recommended_actions=["Please try again or consult with security professionals"]
-        )
-
-        return InvestigationResult(
-            case_id=case_id,
-            evidence=Evidence(
-                type=evidence.type,
-                content=evidence.content,
-                metadata=evidence.metadata
-            ),
-            extracted_evidence=ExtractedEvidence(),
-            agents={
-                "evidence": {"findings": [], "indicators": []},
-                "social_engineering": {"findings": [], "indicators": []},
-                "threat_intelligence": {"findings": [], "indicators": []}
-            },
-            devils_advocate=DevilsAdvocateResult(),
-            verdict=fallback_verdict,
-            timestamp=datetime.utcnow().isoformat() + "Z"
-        )
