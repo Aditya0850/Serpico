@@ -15,6 +15,7 @@ from agents.threat_intelligence_agent import ThreatIntelligenceAgent
 from agents.devils_advocate_agent import DevilsAdvocateAgent
 from agents.judge_agent import JudgeAgent
 from s3_storage import store_evidence
+from dynamodb_storage import store_investigation
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -115,8 +116,11 @@ async def investigate_evidence(evidence: Evidence):
             timestamp=datetime.utcnow().isoformat() + "Z"
         )
 
-        # Store the investigation result for later retrieval
+        # Store the investigation result for later retrieval (in-memory store)
         investigation_store[case_id] = result
+
+        # Persist investigation state to DynamoDB if configured
+        store_investigation(case_id, result.dict())
 
         logger.info(f"Investigation completed for case {case_id}")
         return result
