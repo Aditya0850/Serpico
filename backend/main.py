@@ -14,6 +14,7 @@ from agents.social_engineering_agent import SocialEngineeringAgent
 from agents.threat_intelligence_agent import ThreatIntelligenceAgent
 from agents.devils_advocate_agent import DevilsAdvocateAgent
 from agents.judge_agent import JudgeAgent
+from s3_storage import store_evidence
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +54,11 @@ async def investigate_evidence(evidence: Evidence):
         # Extract text from evidence
         from utils.evidence_extraction import extract_text_from_content
         text_content = extract_text_from_content(evidence.content, evidence.type)
+
+        # Store evidence in S3 if configured
+        s3_key = store_evidence(case_id, evidence.content, getattr(evidence, 'content_type', 'text/plain'))
+        if s3_key:
+            logger.info(f"Evidence stored in S3 with key: {s3_key}")
 
         # Initialize agents
         evidence_agent = EvidenceAgent()
