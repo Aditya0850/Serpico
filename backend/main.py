@@ -8,7 +8,7 @@ import asyncio
 import logging
 
 # Import our models and agents
-from models.investigation import Evidence, ExtractedEvidence, InvestigationResult, Verdict
+from models.investigation import Evidence, ExtractedEvidence, InvestigationResult, Verdict, DevilsAdvocateResult
 from agents.evidence_agent import EvidenceAgent
 from agents.social_engineering_agent import SocialEngineeringAgent
 from agents.threat_intelligence_agent import ThreatIntelligenceAgent
@@ -155,8 +155,9 @@ async def investigate_evidence(evidence: Evidence):
             timestamp=datetime.utcnow().isoformat() + "Z"
         )
 
-    @app.post("/investigate/{case_id}/challenge", response_model=Dict[str, Any])
-    async def challenge_verdict(case_id: str):
+
+@app.post("/investigate/{case_id}/challenge", response_model=Dict[str, Any])
+async def challenge_verdict(case_id: str):
         """
         Attack the current verdict by generating new challenges via Devil's Advocate
         and producing a revised verdict from the Judge.
@@ -211,7 +212,10 @@ async def investigate_evidence(evidence: Evidence):
             evidence=original_result.evidence,
             extracted_evidence=original_result.extracted_evidence,
             agents=original_result.agents,
-            devils_advocate={**original_result.devils_advocate, "challenges": new_challenges_result.get("challenges", [])},
+            devils_advocate=DevilsAdvocateResult(
+    challenges=new_challenges_result.get("challenges", []),
+    counter_evidence=new_challenges_result.get("counter_evidence", [])
+),
             verdict=revised_verdict,
             timestamp=original_result.timestamp
         )
