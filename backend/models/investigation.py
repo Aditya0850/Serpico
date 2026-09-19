@@ -1,12 +1,35 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
+import json
 
 class Evidence(BaseModel):
     type: str  # image, text, url
     content: str  # base64 for images, text content, or URL string
     metadata: Optional[Dict[str, Any]] = None
+
+    @validator('content')
+    def content_size_limit(cls, v):
+        """Limit content to 5 MiB in UTF-8 bytes."""
+        # 5 MiB = 5 * 1024 * 1024 bytes
+        max_size = 5 * 1024 * 1024
+        if len(v.encode('utf-8')) > max_size:
+            raise ValueError(f'Content size exceeds limit of {max_size} bytes')
+        return v
+
+    @validator('metadata')
+    def metadata_size_limit(cls, v):
+        """Limit metadata to 100 KiB when serialized as JSON."""
+        if v is None:
+            return v
+        # 100 KiB = 100 * 1024 bytes
+        max_size = 100 * 1024
+        # Serialize to JSON to get actual byte size
+        serialized = json.dumps(v, sort_keys=True)  # sort_keys for deterministic serialization
+        if len(serialized.encode('utf-8')) > max_size:
+            raise ValueError(f'Metadata size exceeds limit of {max_size} bytes when serialized')
+        return v
 
 class ExtractedEvidence(BaseModel):
     text: str = ""

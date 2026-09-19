@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from typing import Optional, List, Dict, Any
 import uuid
 from datetime import datetime
@@ -16,6 +16,7 @@ from agents.devils_advocate_agent import DevilsAdvocateAgent
 from agents.judge_agent import JudgeAgent
 from s3_storage import store_evidence
 from dynamodb_storage import store_investigation, get_investigation
+from config import aws_config
 
 import os
 
@@ -78,10 +79,54 @@ async def health_check():
     return {"status": "healthy"}
 
 @app.post("/investigate", response_model=InvestigationResult)
-async def investigate_evidence(evidence: Evidence):
+async def investigate_evidence(request: Request):
     """
     Real investigation endpoint that uses the agent pipeline to analyze evidence.
     """
+    # Request size protection - reject clearly oversized requests
+    # 6 MiB limit provides some overhead for JSON structure beyond the 5 MiB content limit
+    max_request_size = 6 * 1024 * 1024  # 6 MiB
+
+    # Check Content-Length header if present
+    content_length = request.headers.get('content-length')
+    if content_length is not None:
+        try:
+            content_length_int = int(content_length)
+            if content_length_int > max_request_size:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Request too large. Maximum size is {max_request_size} bytes"
+                )
+        except ValueError:
+            # If Content-Length is not a valid integer, treat as potentially malicious
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Content-Length header"
+            )
+
+    # Read the body and check its actual size
+    body = await request.body()
+    if len(body) > max_request_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Request too large. Maximum size is {max_request_size} bytes"
+        )
+
+    # Parse the body into the Evidence model
+    try:
+        evidence = Evidence.parse_raw(body)
+    except ValidationError as e:
+        # Convert validation errors to JSON-serializable format
+        errors = []
+        for error in e.errors():
+            # Remove non-serializable fields like 'ctx' that may contain exception objects
+            serializable_error = {k: v for k, v in error.items() if k != 'ctx'}
+            errors.append(serializable_error)
+        raise HTTPException(status_code=422, detail=errors)
+    except Exception as e:
+        # Catch any other parsing errors (e.g., corrupted JSON) and return 400
+        raise HTTPException(status_code=400, detail="Invalid request body")
+
     case_id = f"TRC-{str(uuid.uuid4())[:8].upper()}"
     logger.info(f"Starting investigation for case {case_id}")
 
