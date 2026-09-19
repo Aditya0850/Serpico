@@ -229,7 +229,8 @@ function App() {
     setResult(null);
 
     try {
-      const response = await axios.post('http://localhost:8001/investigate', {
+      const apiBase = import.meta.env.VITE_API_BACKEND_URL || 'http://localhost:8001';
+      const response = await axios.post(`${apiBase}/investigate`, {
         type: evidenceType,
         content: evidenceContent,
       });

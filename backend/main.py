@@ -17,6 +17,8 @@ from agents.judge_agent import JudgeAgent
 from s3_storage import store_evidence
 from dynamodb_storage import store_investigation
 
+import os
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -217,3 +219,10 @@ async def investigate_evidence(evidence: Evidence):
 
         logger.info(f"Challenge completed for case {case_id}")
         return response
+
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8001))
+    uvicorn.run(app, host="0.0.0.0", port=port)
