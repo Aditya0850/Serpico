@@ -15,7 +15,7 @@ from agents.threat_intelligence_agent import ThreatIntelligenceAgent
 from agents.devils_advocate_agent import DevilsAdvocateAgent
 from agents.judge_agent import JudgeAgent
 from s3_storage import store_evidence
-from dynamodb_storage import store_investigation
+from dynamodb_storage import store_investigation, get_investigation
 
 import os
 
@@ -25,8 +25,40 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="TRACE API", version="0.1.0")
 
-# In-memory store for investigation states (will be replaced with DynamoDB later)
-investigation_store = {}
+# Investigation persistence layer
+# - When DynamoDB is configured: use DynamoDB exclusively
+# - When DynamoDB is NOT configured:
+#     * If ENV=development: use in-memory storage with warning (local development mode)
+#     * If ENV!=development: fail clearly (production safety)
+
+# Storage mode detection
+is_development_mode = os.getenv("ENV", "").lower() == "development"
+is_dynamodb_configured = aws_config.is_dynamodb_configured()
+
+# In-memory storage for local development fallback
+_investigation_store = {}
+
+def get_persistence_layer():
+    """Returns the appropriate storage layer based on configuration."""
+    if is_dynamodb_configured:
+        # Use DynamoDB when configured (ignores development mode for safety)
+        return "dynamodb"
+    elif is_development_mode:
+        # Use in-memory storage only in explicit development mode
+        logger.warning(
+            "RUNNING IN LOCAL DEVELOPMENT MODE: Investigation data is stored in memory "
+            "and will be lost on application restart. Do not use in production."
+        )
+        return "memory"
+    else:
+        # Production mode without DynamoDB configured - fail fast
+        error_msg = (
+            "DynamoDB is not configured and ENV is not set to 'development'. "
+            "Set ENV=development for local development with in-memory storage, "
+            "or configure DynamoDB for production use."
+        )
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
 
 # Configure CORS
 app.add_middleware(
@@ -118,11 +150,14 @@ async def investigate_evidence(evidence: Evidence):
             timestamp=datetime.utcnow().isoformat() + "Z"
         )
 
-        # Store the investigation result for later retrieval (in-memory store)
-        investigation_store[case_id] = result
+        # Store the investigation result using the appropriate persistence layer
+        persistence_mode = get_persistence_layer()
+        investigation_result_dict = result.dict()
 
-        # Persist investigation state to DynamoDB if configured
-        store_investigation(case_id, result.dict())
+        if persistence_mode == "dynamodb":
+            store_investigation(case_id, investigation_result_dict)
+        else:  # memory mode
+            _investigation_store[case_id] = result
 
         logger.info(f"Investigation completed for case {case_id}")
         return result
@@ -164,11 +199,18 @@ async def challenge_verdict(case_id: str):
         """
         logger.info(f"Attacking verdict for case {case_id}")
 
-        # Retrieve the existing investigation
-        if case_id not in investigation_store:
-            raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
+        # Retrieve the existing investigation using the appropriate persistence layer
+        persistence_mode = get_persistence_layer()
 
-        original_result = investigation_store[case_id]
+        if persistence_mode == "dynamodb":
+            investigation_data = get_investigation(case_id)
+            if investigation_data is None:
+                raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
+            original_result = InvestigationResult.parse_obj(investigation_data)
+        else:  # memory mode
+            if case_id not in _investigation_store:
+                raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
+            original_result = _investigation_store[case_id]
 
         # Re-run Devil's Advocate to generate NEW challenges
         devils_advocate_agent = DevilsAdvocateAgent()
@@ -219,7 +261,12 @@ async def challenge_verdict(case_id: str):
             verdict=revised_verdict,
             timestamp=original_result.timestamp
         )
-        investigation_store[case_id] = updated_result
+        # Persist the updated investigation using the appropriate persistence layer
+        persistence_mode = get_persistence_layer()
+        if persistence_mode == "dynamodb":
+            store_investigation(case_id, updated_result.dict())
+        else:  # memory mode
+            _investigation_store[case_id] = updated_result
 
         logger.info(f"Challenge completed for case {case_id}")
         return response
