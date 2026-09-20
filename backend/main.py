@@ -168,9 +168,16 @@ def get_persistence_layer():
         raise RuntimeError(error_msg)
 
 # Configure CORS
+frontend_url = os.getenv("FRONTEND_URL", "*")
+if frontend_url == "*":
+    allowed_origins = ["*"]
+else:
+    # Support comma-separated list of origins
+    allowed_origins = [origin.strip() for origin in frontend_url.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

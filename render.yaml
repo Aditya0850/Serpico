@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: trace-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENV
+        value: production
+      - key: FRONTEND_URL
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: DYNAMODB_TABLE
+        sync: false
+      - key: BEDROCK_MODEL_ID
+        sync: false
+    healthCheckPath: /health
