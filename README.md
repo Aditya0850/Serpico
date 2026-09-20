@@ -527,22 +527,22 @@ The hackathon MVP focuses on one complete investigation pipeline.
 
 ### Input
 
-- [x] Screenshot/image
+- [x] Screenshot/image (base64)
 - [x] Text
-- [x] URL
+- [x] URL (with SSRF protection)
 
 ### Investigation
 
 - [x] Evidence extraction
 - [x] Social-engineering analysis
 - [x] Threat/scam intelligence analysis
-- [x] Devil's Advocate
-- [x] Judge Agent
+- [x] Devil's Advocate (adversarial challenges)
+- [x] Judge Agent (final synthesis)
 - [x] Structured investigation state
 
 ### Output
 
-- [x] Risk assessment
+- [x] Risk assessment (LOW/MEDIUM/HIGH/CRITICAL)
 - [x] Investigation reasoning
 - [x] Supporting evidence
 - [x] Counter-evidence
@@ -551,11 +551,11 @@ The hackathon MVP focuses on one complete investigation pipeline.
 
 ### Interface
 
-- [x] Evidence upload
-- [x] Investigation progress
-- [x] Agent findings
+- [x] Evidence upload (text, URL, image)
+- [x] Investigation progress visualization
+- [x] Agent findings display
 - [x] Verdict visualization
-- [x] Attack This Verdict
+- [x] Attack This Verdict (adversarial re-review)
 
 ---
 
@@ -702,22 +702,20 @@ TRACE/
 
 # Getting Started
 
-> Setup instructions will be finalized as the implementation stabilizes.
-
 ## Prerequisites
 
-- Node.js
-- Python
-- AWS Account
-- AWS CLI
-- Configured AWS credentials
-- Required Amazon Bedrock model access
+- Node.js 18+
+- Python 3.10+
+- AWS Account (optional for local development)
+- AWS CLI (optional for local development)
+- Configured AWS credentials (optional for local development)
+- Required Amazon Bedrock model access (for production)
 
 ## Clone
 
 ```bash
-git clone <repository-url>
-cd TRACE
+git clone https://github.com/Aditya0850/Serpico.git
+cd Serpico
 ```
 
 ## Environment
@@ -725,43 +723,70 @@ cd TRACE
 Create the required environment configuration:
 
 ```bash
-cp .env.example .env
+# Backend
+cp backend/.env.example backend/.env
+
+# Frontend
+cp frontend/frontend/.env.example frontend/frontend/.env
 ```
 
 Configure the required AWS and application variables.
 
-> Never commit AWS credentials, API keys, tokens, or other secrets to the repository.
+> **Never commit AWS credentials, API keys, tokens, or other secrets to the repository.**
+> Use `.env.example` files as templates.
 
 ---
 
 # Running the Application
 
-### Frontend
+## Development Mode (Local)
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+For local development without AWS, the system runs in **in-memory mode** (`ENV=development`).
 
 ### Backend
 
 ```bash
 cd backend
 pip install -r requirements.txt
+python -m uvicorn main:app --reload --port 8001
 ```
 
-Start the backend using the project's configured server command.
+### Frontend
+
+```bash
+cd frontend/frontend
+npm install
+npm run dev
+```
+
+Access the app at `http://localhost:5173` (frontend) with backend at `http://localhost:8001`.
+
+## Production Mode
+
+Set `ENV=production` in `backend/.env` and configure AWS credentials for S3/DynamoDB storage.
+
+```bash
+# Backend
+cd backend
+pip install -r requirements.txt
+python -m uvicorn main:app --host 0.0.0.0 --port 8001
+
+# Frontend
+cd frontend/frontend
+npm install
+npm run build
+# Deploy the `dist` folder to your hosting platform
+```
 
 ---
 
 # Demo Flow
 
-The recommended hackathon demonstration:
+The recommended demonstration:
 
 ### 01 — Submit Evidence
 
-Upload a realistic suspicious-message screenshot.
+Upload a realistic suspicious-message screenshot, paste text, or enter a URL.
 
 ### 02 — Evidence Extraction
 
@@ -799,7 +824,7 @@ Investigation Context
 
 TRACE presents:
 
-- Risk level
+- Risk level (LOW / MEDIUM / HIGH / CRITICAL)
 - Key evidence
 - Reasoning
 - Counter-evidence
@@ -808,6 +833,17 @@ TRACE presents:
 ### 07 — Attack This Verdict
 
 The user can challenge the result and trigger another adversarial review.
+
+## Verified Test Cases
+
+All flows tested and passing:
+
+| Evidence Type | Input | Expected Risk |
+|---------------|-------|---------------|
+| Text (scam) | "URGENT: Your account will be suspended! Click http://paypa1.com-security.net..." | MEDIUM |
+| Text (legitimate) | "Hello, this is a normal message from a friend." | LOW |
+| URL | http://example.com | LOW |
+| Image (1x1 PNG) | Base64 encoded PNG | LOW |
 
 ---
 
