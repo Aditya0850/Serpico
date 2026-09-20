@@ -19,6 +19,7 @@ from dynamodb_storage import store_investigation, get_investigation
 from config import aws_config
 
 import os
+import botocore.config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -67,6 +68,79 @@ is_dynamodb_configured = aws_config.is_dynamodb_configured()
 # In-memory storage for local development fallback
 _investigation_store = {}
 
+# Health check helper functions
+# These perform lightweight connectivity checks for configured AWS services
+# Timeout is kept short (2s) to keep /health responsive
+BOTOCORE_CONFIG = botocore.config.Config(
+    connect_timeout=2,
+    read_timeout=2,
+    retries={'max_attempts': 0}
+)
+
+
+async def check_dynamodb_health() -> str:
+    """
+    Perform a lightweight DynamoDB connectivity check.
+    Returns: "healthy" | "degraded" | "not_configured"
+    """
+    if not aws_config.is_dynamodb_configured():
+        return "not_configured"
+
+    try:
+        # Import boto3 locally to avoid circular imports
+        import boto3
+        dynamodb = boto3.resource(
+            service_name='dynamodb',
+            region_name=aws_config.aws_region,
+            config=BOTOCORE_CONFIG
+        )
+        table = dynamodb.Table(aws_config.dynamodb_table)
+        # Lightweight check: describe_table is fast and confirms table exists + accessible
+        await asyncio.get_event_loop().run_in_executor(None, lambda: table.table_status)
+        return "healthy"
+    except Exception as e:
+        logger.warning(f"DynamoDB health check failed: {e}")
+        return "degraded"
+
+
+async def check_s3_health() -> str:
+    """
+    Perform a lightweight S3 connectivity check.
+    Returns: "healthy" | "degraded" | "not_configured"
+    """
+    if not aws_config.is_s3_configured():
+        return "not_configured"
+
+    try:
+        import boto3
+        s3_client = boto3.client(
+            service_name='s3',
+            region_name=aws_config.aws_region,
+            config=BOTOCORE_CONFIG
+        )
+        # Lightweight check: head_bucket confirms bucket exists + accessible
+        await asyncio.get_event_loop().run_in_executor(
+            None, lambda: s3_client.head_bucket(Bucket=aws_config.s3_bucket)
+        )
+        return "healthy"
+    except Exception as e:
+        logger.warning(f"S3 health check failed: {e}")
+        return "degraded"
+
+
+async def check_bedrock_health() -> str:
+    """
+    Report Bedrock configuration status.
+    Returns: "configured" | "not_configured"
+    Note: No active connectivity check is performed since there is no existing
+    Bedrock storage abstraction in the codebase. Adding a model-listing call
+    would introduce unnecessary AWS API usage and latency.
+    """
+    if aws_config.is_bedrock_configured():
+        return "configured"
+    return "not_configured"
+
+
 def get_persistence_layer():
     """Returns the appropriate storage layer based on configuration."""
     if is_dynamodb_configured:
@@ -104,7 +178,54 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    """
+    Health check endpoint that reports application status and AWS dependency status.
+
+    Response format:
+    {
+        "status": "healthy",  # always "healthy" if app is running
+        "mode": "development" | "production",
+        "dependencies": {
+            "dynamodb": "healthy" | "degraded" | "not_configured",
+            "s3": "healthy" | "degraded" | "not_configured",
+            "bedrock": "configured" | "not_configured"
+        }
+    }
+
+    In development mode: no AWS connectivity checks are performed.
+    In production mode: configured services are checked; failures are logged
+    and reported as "degraded" but do not affect the overall "healthy" status.
+    """
+    response = {
+        "status": "healthy",
+        "mode": "development" if is_development_mode else "production",
+        "dependencies": {}
+    }
+
+    if is_development_mode:
+        # Development mode: report configuration status only, no connectivity checks
+        response["dependencies"] = {
+            "dynamodb": "not_configured",
+            "s3": "not_configured",
+            "bedrock": "not_configured"
+        }
+    else:
+        # Production mode: run connectivity checks for configured services concurrently
+        dynamodb_task = asyncio.create_task(check_dynamodb_health())
+        s3_task = asyncio.create_task(check_s3_health())
+        bedrock_task = asyncio.create_task(check_bedrock_health())
+
+        dynamodb_status, s3_status, bedrock_status = await asyncio.gather(
+            dynamodb_task, s3_task, bedrock_task
+        )
+
+        response["dependencies"] = {
+            "dynamodb": dynamodb_status,
+            "s3": s3_status,
+            "bedrock": bedrock_status
+        }
+
+    return response
 
 @app.post("/investigate", response_model=InvestigationResult)
 async def investigate_evidence(request: Request):
