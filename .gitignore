@@ -1,2 +1,38 @@
 # Ignore all .pid files
 **/*.pid
+
+# Node modules
+node_modules/
+
+# Environment files (never commit)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary debug/test files
+debug_*.js
+test_*.js
+
+# Local images not part of app
+*.webp
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Package lock (optional - keep if you want deterministic installs)
+package-lock.json

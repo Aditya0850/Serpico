@@ -6,6 +6,11 @@ import uuid
 from datetime import datetime
 import asyncio
 import logging
+import os
+from dotenv import load_dotenv
+
+# Load .env BEFORE any config initialization
+load_dotenv()
 
 # Import our models and agents
 from models.investigation import Evidence, ExtractedEvidence, InvestigationResult, Verdict, DevilsAdvocateResult
@@ -18,7 +23,6 @@ from s3_storage import store_evidence
 from dynamodb_storage import store_investigation, get_investigation
 from config import aws_config
 
-import os
 import botocore.config
 
 # Configure logging
@@ -282,7 +286,7 @@ async def investigate_evidence(request: Request):
     try:
         # Extract text from evidence
         from utils.evidence_extraction import extract_text_from_content
-        text_content = extract_text_from_content(evidence.content, evidence.type)
+        text_content = await extract_text_from_content(evidence.content, evidence.type)
 
         # Store evidence in S3 if configured
         s3_key = store_evidence(case_id, evidence.content, getattr(evidence, 'content_type', 'text/plain'))
@@ -323,7 +327,7 @@ async def investigate_evidence(request: Request):
 
         # Extract evidence for the response
         from utils.evidence_extraction import extract_evidence
-        extracted_evidence = extract_evidence(evidence.content, evidence.type)
+        extracted_evidence = await extract_evidence(evidence.content, evidence.type)
 
         # Prepare the investigation result
         result = InvestigationResult(

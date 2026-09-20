@@ -1,3 +1,14 @@
+import os
+import sys
+
+# Set development mode BEFORE importing app
+os.environ["ENV"] = "development"
+
+# Clear any cached modules
+for mod in list(sys.modules.keys()):
+    if mod.startswith("main") or mod.startswith("config") or mod.startswith("utils"):
+        del sys.modules[mod]
+
 from starlette.testclient import TestClient
 from main import app
 import json
