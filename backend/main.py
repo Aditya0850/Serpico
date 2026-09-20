@@ -34,6 +34,34 @@ app = FastAPI(title="TRACE API", version="0.1.0")
 
 # Storage mode detection
 is_development_mode = os.getenv("ENV", "").lower() == "development"
+
+# Validate AWS configuration at startup
+def validate_aws_configuration() -> None:
+    """Validate AWS configuration and log status. Fail fast in production for required services."""
+    validation_results = aws_config.validate_all(is_development_mode)
+
+    # Log all service statuses
+    for service, result in validation_results.items():
+        if result.is_valid:
+            logger.info(f"AWS Config: {result.message}")
+        else:
+            logger.error(f"AWS Config: {result.message}")
+
+    # In production, fail if DynamoDB is required but not properly configured
+    if not is_development_mode:
+        dynamodb_result = validation_results["dynamodb"]
+        if not dynamodb_result.is_valid:
+            error_msg = (
+                f"Production mode: {dynamodb_result.message}. "
+                f"Set ENV=development for local development with in-memory storage, "
+                f"or configure {', '.join(dynamodb_result.missing_vars)} for production use."
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+# Run validation
+validate_aws_configuration()
+
 is_dynamodb_configured = aws_config.is_dynamodb_configured()
 
 # In-memory storage for local development fallback
@@ -52,7 +80,7 @@ def get_persistence_layer():
         )
         return "memory"
     else:
-        # Production mode without DynamoDB configured - fail fast
+        # This should never be reached due to startup validation, but keep as safety net
         error_msg = (
             "DynamoDB is not configured and ENV is not set to 'development'. "
             "Set ENV=development for local development with in-memory storage, "
